@@ -1,0 +1,11 @@
+dist: trusty
+language: java
+jdk:
+  - oraclejdk11
+script:
+  - mvn -q install
+
+cache:
+  directories:
+  - .autoconf
+  - $HOME/.m2
