@@ -140,21 +140,19 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     }
 
     private static Object deserializeValue(byte[] value) throws IOException, ClassNotFoundException {
-        try (var inputStream = new ByteArrayInputStream(value)) {
+        var inputStream = new ByteArrayInputStream(value);
 
-            try (var objectInput = new ObjectInputStream(inputStream)) {
-                return objectInput.readObject();
-            }
+        try (var objectInput = new ObjectInputStream(inputStream)) {
+            return objectInput.readObject();
         }
     }
 
     private static byte[] serializeKey(Serializable key) throws IOException {
-        try (var byteArray = new ByteArrayOutputStream()) {
-            try (var objectOutput = new ObjectOutputStream(byteArray)) {
-                objectOutput.writeObject(key);
-            }
-            return byteArray.toByteArray();
+        var byteArray = new ByteArrayOutputStream();
+        try (var objectOutput = new ObjectOutputStream(byteArray)) {
+            objectOutput.writeObject(key);
         }
+        return byteArray.toByteArray();
     }
 
     private void clearPage(ByteBuffer page) {

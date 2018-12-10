@@ -22,13 +22,13 @@ class UnorderedHeapFileTest {
     private Store heapFile;
 
     @BeforeEach
-    public void setUp() throws IOException {
+    void setUp() throws IOException {
         heapFilePath = Files.createTempFile("heap", "0001");
         heapFile = new UnorderedHeapFile(heapFilePath, 1024, 4 * 1024);
     }
 
     @AfterEach
-    public void tearDown() throws IOException {
+    void tearDown() throws IOException {
         Files.delete(heapFilePath);
     }
 
@@ -113,7 +113,7 @@ class UnorderedHeapFileTest {
         heapFile.remove(key);
 
         // then
-        assertNull((byte[]) heapFile.get(key));
+        assertNull(heapFile.get(key));
     }
 
     @Test
@@ -150,7 +150,6 @@ class UnorderedHeapFileTest {
     }
 
     private Entry newEntry(Serializable firstkey, Serializable firstvalue) {
-        Entry entry = new Entry(firstkey, firstvalue);
-        return entry;
+        return new Entry(firstkey, firstvalue);
     }
 }

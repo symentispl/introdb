@@ -22,7 +22,7 @@ class UnorderedHeapFileCursorTest {
     private UnorderedHeapFile heapFile;
 
     @BeforeEach
-    public void setUp() throws IOException {
+    void setUp() throws IOException {
         Path heapFilePath = Files.createTempFile("heap", "0001");
         heapFile = new UnorderedHeapFile(heapFilePath, 1024, 4 * 1024);
     }
