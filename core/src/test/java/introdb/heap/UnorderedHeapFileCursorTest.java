@@ -28,7 +28,7 @@ class UnorderedHeapFileCursorTest {
     }
 
     @Test
-    void does_not_has_next_on_empty_file() throws IOException, ClassNotFoundException {
+    void does_not_has_next_on_empty_file() {
 
         // when
         Cursor cursor = heapFile.cursor();
@@ -41,7 +41,7 @@ class UnorderedHeapFileCursorTest {
 
     @ParameterizedTest
     @ValueSource(ints = {512,2048})
-    void iterate_over_records(int valueSize) throws IOException, ClassNotFoundException {
+    void iterate_over_records(int valueSize) throws IOException {
         // given
         var firstkey = "1";
         var firstvalue = putRandomValue(firstkey, valueSize);
