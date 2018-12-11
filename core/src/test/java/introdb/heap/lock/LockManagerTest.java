@@ -3,7 +3,6 @@ package introdb.heap.lock;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 
 import org.junit.jupiter.api.AfterEach;
@@ -21,12 +20,12 @@ public class LockManagerTest {
 	}
 	
 	@AfterEach
-	public void tearDown() throws InterruptedException {
+	public void tearDown() throws Exception {
 		lockManager.shutdown();
 	}
 	
 	@Test
-	public void a() throws InterruptedException, ExecutionException {
+	public void a() throws Exception {
 		
 		LockSupport lock0 = lockManager.lockForPage(0);
 		ReadLock readLock0 = lock0.readLock();
@@ -38,7 +37,7 @@ public class LockManagerTest {
 	}
 
 	@Test
-	public void b() throws InterruptedException, ExecutionException {
+	public void b() throws Exception {
 		
 		LockSupport lock0 = lockManager.lockForPage(0);
 		ReadLock readLock0 = lock0.readLock();
@@ -50,7 +49,7 @@ public class LockManagerTest {
 	}
 
 	@Test
-	public void c() throws InterruptedException, ExecutionException {
+	public void c() throws Exception {
 		
 		LockSupport lock0 = lockManager.lockForPage(0);
 		String lock0ToString = lock0.toString();
