@@ -6,7 +6,7 @@ public class LockManager {
 		return null;
 	}
 
-	public void shutdown() {
+	public void shutdown() throws Exception{
 		
 	}
 
