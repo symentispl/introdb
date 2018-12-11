@@ -4,6 +4,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 
 public interface LockSupport {
 
-	ReadLock readLock();
+	ReadLock readLock() throws Exception;
 
 }
