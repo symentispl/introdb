@@ -1,65 +1,51 @@
 package introdb.heap.lock;
 
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-
 public class LockManagerTest {
-	
+
 	private LockManager lockManager;
 
 	@BeforeEach
 	public void setUp() {
 		lockManager = new LockManager();
 	}
-	
+
 	@AfterEach
 	public void tearDown() throws Exception {
 		lockManager.shutdown();
 	}
-	
+
 	@Test
-	public void a() throws Exception {
-		
-		LockSupport lock0 = lockManager.lockForPage(0);
-		ReadLock readLock0 = lock0.readLock();
-		
-		LockSupport lock1 = lockManager.lockForPage(1);
-		ReadLock readLock1 = lock1.readLock();
-		
-		assertNotEquals(readLock0, readLock1);
+	public void use_same_lock_for_page() throws Exception {
+		LockSupport lockSupport = lockManager.lockForPage(0);
+		CompletableFuture<String> op = lockSupport.inReadLock(() -> "readLock0");
+
+		assertEquals("readLock0", op.get(1, TimeUnit.SECONDS));
+		assertSame(lockSupport, lockManager.lockForPage(0));
 	}
 
 	@Test
-	public void b() throws Exception {
-		
+	public void get_new_lock_for_page() throws Exception {
 		LockSupport lock0 = lockManager.lockForPage(0);
-		ReadLock readLock0 = lock0.readLock();
+		lock0.inReadLock(() -> "readLock0");
 		
-		LockSupport lock1 = lockManager.lockForPage(0);
-		ReadLock readLock1 = lock1.readLock();
-		
-		assertEquals(readLock0, readLock1);
-	}
-
-	@Test
-	public void c() throws Exception {
-		
-		LockSupport lock0 = lockManager.lockForPage(0);
 		String lock0ToString = lock0.toString();
+		lock0 = null;
 		
-		lock0 = null; // lock0 is now unreachable
+		// force weak ref processing
+		System.gc();
 		
-		System.gc(); // force WeakRef processing
-		
-		LockSupport lock1 = lockManager.lockForPage(0);
-		
-		assertNotEquals(lock0ToString, lock1.toString());
+		assertNotEquals(lock0ToString, lockManager.lockForPage(0).toString());
 	}
+	
 }
