@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ObjectPool<T> {
 
-    private final ObjectFactory<T> fcty;
+    private ObjectFactory<T> fcty;
     private final ObjectValidator<T> validator;
     private final int maxPoolSize;
 
@@ -38,7 +38,7 @@ public class ObjectPool<T> {
             return spinWaitAsync();
         }
 
-        return CompletableFuture.completedFuture(initializeLazily());
+        return CompletableFuture.completedFuture(initializeLockFreeLazily());
     }
 
     public void returnObject(T object) {
@@ -70,7 +70,7 @@ public class ObjectPool<T> {
         });
     }
 
-    private T initializeLazily() {
+    private T initializeLockFreeLazily() {
         int claimed;
         int next;
         do {
@@ -80,6 +80,9 @@ public class ObjectPool<T> {
 
         T object = fcty.create();
         pool[claimed] = object;
+        if (claimed + 1 == maxPoolSize) {
+            fcty = null;
+        }
         return object;
     }
 }
