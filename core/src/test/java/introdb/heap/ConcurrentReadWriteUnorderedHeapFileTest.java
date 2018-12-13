@@ -25,7 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-public class ConcurrentReadWriteUnorderedHeapFileTest {
+class ConcurrentReadWriteUnorderedHeapFileTest {
 
 	private static final Logger LOG = Logger.getLogger("test.readwrite.concurrent");
 
@@ -42,7 +42,7 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 	private ExecutorService executors;
 
 	@BeforeEach
-	public void setUp() throws IOException {
+	void setUp() throws IOException {
 		heapFilePath = Files.createTempFile("heap", "0001");
 		heapFile = new UnorderedHeapFile(heapFilePath, MAX_NR_PAGES, PAGE_SIZE);
 
@@ -50,7 +50,7 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 	}
 
 	@AfterEach
-	public void tearDown() throws IOException, InterruptedException {
+	void tearDown() throws IOException, InterruptedException {
 		Files.delete(heapFilePath);
 		
 		executors.shutdown();
@@ -60,7 +60,7 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 
 	@Test
 	@Tag("slow")
-	public void concurrentReadWrite() throws Exception {
+	void concurrentReadWrite() throws Exception {
 
 		writersLatch = new CountDownLatch(nrOfWriters);		
 		
@@ -129,7 +129,7 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 		}
 	}
 
-	public <T> Supplier<T> uncheckedFuture(Future<T> future) {
+	<T> Supplier<T> uncheckedFuture(Future<T> future) {
 		return () -> {
 			try {
 				return future.get();
