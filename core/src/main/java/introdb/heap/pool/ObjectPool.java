@@ -46,7 +46,6 @@ public class ObjectPool<T> {
     }
 
     public void shutdown() throws InterruptedException {
-
     }
 
     public int getPoolSize() {
@@ -81,7 +80,7 @@ public class ObjectPool<T> {
 
         T object = fcty.create();
         pool[claimed] = object;
-        if (claimed + 1 == maxPoolSize) {
+        if (next == maxPoolSize) {
             fcty = null;
         }
         return object;
