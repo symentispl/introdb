@@ -12,9 +12,8 @@ public class ObjectPool<T> {
     private final int maxPoolSize;
 
     private final T[] pool;
-    private final AtomicInteger head = new AtomicInteger(0);
-
     private final ArrayBlockingQueue<T> free;
+    private final AtomicInteger head = new AtomicInteger(0);
 
     public ObjectPool(ObjectFactory<T> fcty, ObjectValidator<T> validator) {
         this(fcty, validator, 25);
@@ -53,9 +52,15 @@ public class ObjectPool<T> {
     }
 
     public int getInUse() {
-        return (int) Arrays.stream(pool, 0, head.get())
-          .filter(validator::validate)
-          .count();
+        int count = 0;
+        int bound = head.get();
+        for (int i = 0; i < bound; i++) {
+            T t = pool[i];
+            if (validator.validate(t)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private CompletableFuture<T> spinWaitAsync() {
