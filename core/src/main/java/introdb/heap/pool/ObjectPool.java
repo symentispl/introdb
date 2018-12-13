@@ -46,6 +46,7 @@ public class ObjectPool<T> {
     }
 
     public void shutdown() throws InterruptedException {
+
     }
 
     public int getPoolSize() {
@@ -62,9 +63,9 @@ public class ObjectPool<T> {
         return CompletableFuture.supplyAsync(() -> {
             T object;
 
-            do {
-                object = free.poll();
-            } while (object == null);
+            while (null == (object = free.poll())) {
+                Thread.onSpinWait();
+            }
 
             return object;
         });
