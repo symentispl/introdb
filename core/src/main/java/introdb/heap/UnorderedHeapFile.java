@@ -39,9 +39,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
     private final FileChannel file;
 
-    private final ObjectPool<ReentrantReadWriteLock> locks = new ObjectPool<>(ReentrantReadWriteLock::new, l -> !l
-      .hasQueuedThreads());
-    private final ReentrantReadWriteLock lock = locks.borrowObject().join(); // NAIVE IMPL
+    private final ObjectPool<ReentrantReadWriteLock> locks = new ObjectPool<>(ReentrantReadWriteLock::new, l -> !l.hasQueuedThreads());
 
     UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
         this.file = FileChannel.open(path, Set.of(CREATE, READ, WRITE));
@@ -52,10 +50,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     }
 
     @Override
-    public void put(Entry entry) throws IOException {
-        lock.writeLock().lock();
-
-        try {
+    public synchronized void put(Entry entry) throws IOException {
             assertTooManyPages();
 
             var newRecord = Record.of(entry);
@@ -77,18 +72,12 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
             var src = newRecord.write(() -> lastPage);
             writePage(src, lastPageNumber.get());
-        } finally {
-            lock.writeLock().unlock();
-        }
     }
 
     @Override
-    public Object get(Serializable key) throws IOException, ClassNotFoundException {
+    public synchronized Object get(Serializable key) throws IOException, ClassNotFoundException { // TODO bo trzeba było dowiezc
         var keySer = serializeKey(key);
 
-        lock.readLock().lock();
-
-        try {
             var iterator = cursor();
             while (iterator.hasNext()) {
                 var record = iterator.next();
@@ -97,17 +86,11 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
                 }
             }
             return null;
-        } finally {
-            lock.readLock().unlock();
-        }
     }
 
-    public Object remove(Serializable key) throws IOException, ClassNotFoundException {
+    public synchronized Object remove(Serializable key) throws IOException, ClassNotFoundException {
         var keySer = serializeKey(key);
 
-        lock.writeLock().lock();
-
-        try {
             var iterator = cursor();
             while (iterator.hasNext()) {
                 var record = iterator.next();
@@ -118,9 +101,6 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
                 }
             }
             return null;
-        } finally {
-            lock.writeLock().unlock();
-        }
     }
 
     private void writePage(ByteBuffer page, int pageNr) throws IOException {
@@ -229,24 +209,16 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
         @Override
         public Record next() {
-            lock.readLock().lock();
-
-            try {
                 if (hasNext || hasNext()) {
                     hasNext = false;
                     inPagePosition = page.position() - 1;
                     return record();
                 }
                 throw new NoSuchElementException();
-            } finally {
-                lock.readLock().unlock();
-            }
         }
 
         @Override
         public void remove() {
-            lock.writeLock().lock();
-            try {
                 if (inPagePosition < 0) {
                     throw new IllegalStateException("next() method has not yet been called, or the remove() method has already been called");
                 }
@@ -258,9 +230,6 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
                 } catch (IOException e) {
                     throw new IOError(e);
                 }
-            } finally {
-                lock.writeLock().unlock();
-            }
         }
 
         private Record record() {
