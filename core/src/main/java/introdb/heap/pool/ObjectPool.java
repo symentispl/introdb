@@ -34,9 +34,27 @@ public class ObjectPool<T> {
             return completedFuture(obj);
         }
 
-        return nextIndex.get() == maxPoolSize
-          ? spinWaitAsync()
-          : completedFuture(initializeLockFreeLazily());
+        if (nextIndex.get() == maxPoolSize) {
+            return spinWaitAsync();
+        }
+
+        int claimed;
+        int next;
+        do {
+            claimed = nextIndex.get();
+            next = claimed + 1;
+            if (next > maxPoolSize) {
+                return spinWaitAsync();
+            }
+        } while (!nextIndex.compareAndSet(claimed, next));
+
+        T object = fcty.create();
+        pool[claimed] = object;
+        if (next == maxPoolSize) {
+            fcty = null;
+        }
+
+        return completedFuture(object);
     }
 
     public void returnObject(T object) {
@@ -72,21 +90,5 @@ public class ObjectPool<T> {
 
             return obj;
         });
-    }
-
-    private T initializeLockFreeLazily() {
-        int claimed;
-        int next;
-        do {
-            claimed = nextIndex.get();
-            next = claimed + 1;
-        } while (!nextIndex.compareAndSet(claimed, next));
-
-        T object = fcty.create();
-        pool[claimed] = object;
-        if (next == maxPoolSize) {
-            fcty = null;
-        }
-        return object;
     }
 }

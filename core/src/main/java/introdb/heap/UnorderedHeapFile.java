@@ -41,7 +41,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
     private final ObjectPool<ReentrantReadWriteLock> locks = new ObjectPool<>(ReentrantReadWriteLock::new, l -> !l
       .hasQueuedThreads());
-    private final ReentrantReadWriteLock lock = locks.borrowObject().join();
+    private final ReentrantReadWriteLock lock = locks.borrowObject().join(); // NAIVE IMPL
 
     UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
         this.file = FileChannel.open(path, Set.of(CREATE, READ, WRITE));
