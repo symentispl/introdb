@@ -30,7 +30,7 @@ public class ObjectPool<T> {
 
     public CompletableFuture<T> borrowObject() {
         T obj;
-        if (null != (obj = freePool.poll())) { // if available, return
+        if (null != (obj = freePool.poll()) && validator.validate(obj)) { // if available, return
             return completedFuture(obj);
         }
 
@@ -64,13 +64,13 @@ public class ObjectPool<T> {
 
     private CompletableFuture<T> spinWaitAsync() {
         return CompletableFuture.supplyAsync(() -> {
-            T object;
+            T obj;
 
-            while (null == (object = freePool.poll())) {
+            while (null == (obj = freePool.poll()) || !validator.validate(obj)) {
                 Thread.onSpinWait();
             }
 
-            return object;
+            return obj;
         });
     }
 
