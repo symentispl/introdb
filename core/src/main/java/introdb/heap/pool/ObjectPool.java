@@ -40,7 +40,7 @@ public class ObjectPool<T> {
     }
 
     public void returnObject(T object) {
-        freePool.add(object);
+        freePool.offer(object);
     }
 
     public void shutdown() throws InterruptedException {
