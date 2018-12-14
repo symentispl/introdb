@@ -1,9 +1,10 @@
 package introdb.heap.pool;
 
-import java.util.Arrays;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.util.concurrent.CompletableFuture.completedFuture;
 
 public class ObjectPool<T> {
 
@@ -12,8 +13,8 @@ public class ObjectPool<T> {
     private final int maxPoolSize;
 
     private final T[] pool;
-    private final ArrayBlockingQueue<T> free;
-    private final AtomicInteger head = new AtomicInteger(0);
+    private final ArrayBlockingQueue<T> freePool;
+    private final AtomicInteger nextIndex = new AtomicInteger(0);
 
     public ObjectPool(ObjectFactory<T> fcty, ObjectValidator<T> validator) {
         this(fcty, validator, 25);
@@ -24,36 +25,34 @@ public class ObjectPool<T> {
         this.validator = validator;
         this.maxPoolSize = maxPoolSize;
         this.pool = (T[]) new Object[maxPoolSize];
-        this.free = new ArrayBlockingQueue<>(maxPoolSize);
+        this.freePool = new ArrayBlockingQueue<>(maxPoolSize);
     }
 
     public CompletableFuture<T> borrowObject() {
         T obj;
-        if (null != (obj = free.poll())) {
-            return CompletableFuture.completedFuture(obj);
+        if (null != (obj = freePool.poll())) { // if available, return
+            return completedFuture(obj);
         }
 
-        if (head.get() == maxPoolSize) { // if fully initialized, wait for a free one
-            return spinWaitAsync();
-        }
-
-        return CompletableFuture.completedFuture(initializeLockFreeLazily());
+        return nextIndex.get() == maxPoolSize
+          ? spinWaitAsync()
+          : completedFuture(initializeLockFreeLazily());
     }
 
     public void returnObject(T object) {
-        free.add(object);
+        freePool.add(object);
     }
 
     public void shutdown() throws InterruptedException {
     }
 
     public int getPoolSize() {
-        return head.get();
+        return nextIndex.get();
     }
 
     public int getInUse() {
         int count = 0;
-        int bound = head.get();
+        int bound = nextIndex.get();
         for (int i = 0; i < bound; i++) {
             T t = pool[i];
             if (validator.validate(t)) {
@@ -67,7 +66,7 @@ public class ObjectPool<T> {
         return CompletableFuture.supplyAsync(() -> {
             T object;
 
-            while (null == (object = free.poll())) {
+            while (null == (object = freePool.poll())) {
                 Thread.onSpinWait();
             }
 
@@ -79,9 +78,9 @@ public class ObjectPool<T> {
         int claimed;
         int next;
         do {
-            claimed = head.get();
+            claimed = nextIndex.get();
             next = claimed + 1;
-        } while (!head.compareAndSet(claimed, next));
+        } while (!nextIndex.compareAndSet(claimed, next));
 
         T object = fcty.create();
         pool[claimed] = object;
