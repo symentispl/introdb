@@ -69,6 +69,8 @@ public class ObjectPool<T> {
 			} else {
 				objectPool.offer(object);
 			}
+		} else {
+			poolSize.decrementAndGet();
 		}
 	}
 
