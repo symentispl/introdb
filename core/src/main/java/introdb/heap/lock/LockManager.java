@@ -68,79 +68,8 @@ public class LockManager {
 		}
 	}
 
-	/**
-	 * Holds reentrant lock so we can return it to the pool when
-	 * {@link DefaultLockSupport} is garbage collected.
-	 *
-	 */
-	class LockRef extends WeakReference<DefaultLockSupport> {
-
-		private final CompletableFuture<ReentrantReadWriteLock> futureLock;
-		private final Integer pageNr;
-
-		LockRef(Integer pageNr, DefaultLockSupport referent, CompletableFuture<ReentrantReadWriteLock> futureLock,
-		        ReferenceQueue<DefaultLockSupport> q) {
-			super(referent, q);
-			this.pageNr = pageNr;
-			this.futureLock = futureLock;
-		}
-
-		@Override
-		public void clear() {
-			super.clear();
-			boolean removed = locks.remove(pageNr, this);
-			LOGGER.info(() -> format("lock for page %d was %s removed", pageNr, removed ? "" : "not"));
-			try {
-				if (futureLock.isDone() && (!futureLock.isCancelled() && !futureLock.isCompletedExceptionally()))
-					objectPool.returnObject(futureLock.get());
-			} catch (InterruptedException | ExecutionException e) {
-				LOGGER.log(Level.SEVERE, format("failed to clear lock ref %s", this), e);
-			}
-		}
-	}
-
-	private final ConcurrentHashMap<Integer, LockRef> locks = new ConcurrentHashMap<>();
-	private final ObjectPool<ReentrantReadWriteLock> objectPool = new ObjectPool<>(ReentrantReadWriteLock::new,
-	        l -> l.getWriteHoldCount() == 0 && l.getReadHoldCount() == 0);
-	private final ReferenceQueue<DefaultLockSupport> referenceQ = new ReferenceQueue<>();
-	private final ExecutorService invalidator = Executors.newSingleThreadExecutor();
-	private volatile boolean running = true;
-
-	public LockManager() {
-		invalidator.execute(() -> {
-			while (running) {
-				try {
-					Reference<? extends DefaultLockSupport> reference = referenceQ.remove(1000);
-					if (reference != null) {
-						LOGGER.info(() -> format("processing reference %s", reference));
-						reference.clear();
-					}
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-		});
-	}
-
-	public LockSupport lockForPage(Integer pageNr) throws InterruptedException, ExecutionException {
-		var futureLock = locks.compute(pageNr, (_pageNr, _lockRef) -> {
-			// handling situation when there is no mapping, or mapping points to unreachable
-			// lock
-			// instance, which was not yet processed by invalidator
-			if (_lockRef == null || _lockRef.get() == null) {
-				CompletableFuture<ReentrantReadWriteLock> future = objectPool.borrowObject();
-				return new LockRef(_pageNr, new DefaultLockSupport(future), future, referenceQ);
-			} else {
-				return _lockRef;
-			}
-		});
-		return futureLock.get();
-	}
-
-	public void shutdown() throws Exception {
-		running = false;
-		invalidator.shutdown();
-		invalidator.awaitTermination(2000, TimeUnit.MILLISECONDS);
+	public void shutdown() throws Exception{
+		
 	}
 
 }

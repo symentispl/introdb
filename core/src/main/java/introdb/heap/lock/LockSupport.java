@@ -1,13 +1,15 @@
 package introdb.heap.lock;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.function.Supplier;
 
 public interface LockSupport {
 
-	<R> CompletableFuture<R> inReadLock(Supplier<R> supplier);
+	<R> CompletableFuture<R> inReadOperation(Supplier<R> supplier);
 	
-	<R> CompletableFuture<R> inWriteLock(Supplier<R> supplier);
+	<R> CompletableFuture<R> inWriteOperation(Supplier<R> supplier);
 	
-
+	String toString();
+	
 }
