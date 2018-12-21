@@ -2,6 +2,7 @@ package introdb.heap.pool;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -15,7 +16,7 @@ class ObjectPoolTest {
 	private ObjectPool<Object> objectPool;
 
 	@AfterEach
-	public void tearDown() throws Exception {
+	void tearDown() throws Exception {
 		objectPool.shutdown();
 	}
 
@@ -32,7 +33,6 @@ class ObjectPoolTest {
 		assertNotEquals(first.get(1, TimeUnit.SECONDS), second.get(1, TimeUnit.SECONDS));
 		assertEquals(2, objectPool.getPoolSize());
 		assertEquals(2, objectPool.getInUse());
-		
 	}
 
 	@Test
@@ -64,4 +64,22 @@ class ObjectPoolTest {
 
 		assertEquals(first.get(), second.get(1, TimeUnit.SECONDS));
 	}
+
+	@Test
+	void return_invalid_object() throws Exception {
+		objectPool = new ObjectPool<>(Object::new, obj -> false, 1);
+
+		var first = objectPool.borrowObject();
+
+		assertNotNull(first.get(1, TimeUnit.SECONDS));
+
+		objectPool.returnObject(first.get());
+
+		assertEquals(0, objectPool.getPoolSize());
+		assertEquals(0, objectPool.getInUse());
+		
+		var second = objectPool.borrowObject();
+		assertNotSame(second.get(),first.get());
+	}
+
 }
