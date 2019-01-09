@@ -10,41 +10,51 @@ public class RegionAllocator {
 	private final int minRegionSize;
 
 	private final ConcurrentSkipListSet<Region> freeList;
-	
+
 	public RegionAllocator(int initialNumberOfRegions, int maxRegionSize, int minRegionSize) {
 		this.initialNumberOfRegions = initialNumberOfRegions;
 		this.maxRegionSize = maxRegionSize;
 		this.minRegionSize = minRegionSize;
-		this.freeList= new ConcurrentSkipListSet<Region>((a,b) -> ((a.pageNr()*a.size())+a.offset())-((b.pageNr()*b.size())+b.offset()));
-		
+		this.freeList = new ConcurrentSkipListSet<Region>(
+		        (a, b) -> ((a.pageNr() * a.size()) + a.offset()) - ((b.pageNr() * b.size()) + b.offset()));
+
 		// pre fill free regions
-		for(int i=0;i<initialNumberOfRegions;i++) {
-			freeList.add(new Region(i,0,maxRegionSize));
+		for (int i = 0; i < initialNumberOfRegions; i++) {
+			freeList.add(new Region(i, 0, maxRegionSize));
 		}
 	}
 
 	Optional<Region> alloc(int size) {
 		var iterator = freeList.iterator();
-		
-		
-		int regionSize=size;
-		if(regionSize<minRegionSize) {
-			regionSize=minRegionSize;
+
+		int regionSize = size;
+		if (regionSize < minRegionSize) {
+			regionSize = minRegionSize;
 		}
-		
-		while(iterator.hasNext()) {
+
+		while (iterator.hasNext()) {
 			Region region = iterator.next();
-			if(regionSize<=region.size()) {
+			if (regionSize <= region.size()) {
 				iterator.remove();
-				freeList.add(new Region(region.pageNr(),region.offset()+regionSize,region.size()-regionSize));
-				return Optional.of(new Region(region.pageNr(),region.offset(),regionSize));
+				freeList.add(new Region(region.pageNr(), region.offset() + regionSize, region.size() - regionSize));
+				return Optional.of(new Region(region.pageNr(), region.offset(), regionSize));
 			}
 		}
 		return Optional.empty();
 	}
-		
+
 	void free(Region region) {
-		freeList.add(region);
+		Region nextRegion = freeList.ceiling(region);
+		if (nextRegion != null 
+				&& nextRegion.pageNr()==region.pageNr()
+				&&(maxRegionSize * region.pageNr() + region.offset() + region.size()) == (maxRegionSize * nextRegion.pageNr() + nextRegion.offset())) {
+			freeList.remove(nextRegion);
+			Region mergedRegion = new Region(region.pageNr(),region.offset(),region.size()+nextRegion.size());
+			freeList.add(mergedRegion);
+		} else {
+			freeList.add(region);
+		}
+
 	}
-	
+
 }
