@@ -54,7 +54,6 @@ public class RegionAllocator {
 		} else {
 			freeList.add(region);
 		}
-
 	}
 
 }

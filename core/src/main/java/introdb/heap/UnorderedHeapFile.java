@@ -2,6 +2,8 @@ package introdb.heap;
 
 import static java.lang.String.format;
 
+import introdb.heap.Record.Mark;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOError;
@@ -19,8 +21,6 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import introdb.heap.Record.Mark;
 
 class UnorderedHeapFile implements Store, Iterable<Record> {
 
@@ -120,7 +120,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     lock.writeLock().lock();
     try {
       boolean found = false;
-      Object value=null;
+      Object value = null;
       lock.readLock().lock();
       try {
         while (iterator.hasNext()) {
@@ -151,7 +151,6 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     } catch (IOException e) {
       throw new IOError(e);
     }
-    page.position(position);
   }
 
   private ByteBuffer readPage(int pageNr) {
@@ -184,6 +183,8 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
       throw new TooManyPages();
     }
   }
+
+  
 
   private static Object deserializeValue(byte[] value) {
     try (var inputStream = new ByteArrayInputStream(value)) {
