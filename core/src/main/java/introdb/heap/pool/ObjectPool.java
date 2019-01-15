@@ -14,7 +14,7 @@ public class ObjectPool<T> {
 	private final int maxPoolSize;
 
 	private final ArrayBlockingQueue<T> objectPool;
-	private final ConcurrentLinkedQueue<CompletableFuture<T>> borrowObjectTasks = new ConcurrentLinkedQueue<>();
+	private final ConcurrentLinkedQueue<CompletableFuture<T>> uncompletedTasks = new ConcurrentLinkedQueue<>();
 
 	private final AtomicInteger poolSize = new AtomicInteger(0);
 
@@ -63,7 +63,7 @@ public class ObjectPool<T> {
 	public void returnObject(T object) {
 		if (validator.validate(object)) {
 			// piggyback, on release, check if there is any task waiting for object
-			CompletableFuture<T> future = borrowObjectTasks.poll();
+			var future = uncompletedTasks.poll();
 			if (future != null) {
 				future.complete(object);
 			} else {
@@ -87,7 +87,7 @@ public class ObjectPool<T> {
 
 	private CompletableFuture<T> uncompletedRequest() {
 		var req = new CompletableFuture<T>();
-		borrowObjectTasks.add(req);
+		uncompletedTasks.add(req);
 		return req;
 	}
 
