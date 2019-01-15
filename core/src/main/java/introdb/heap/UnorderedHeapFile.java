@@ -1,5 +1,7 @@
 package introdb.heap;
 
+import static java.lang.String.format;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOError;
@@ -22,295 +24,270 @@ import introdb.heap.Record.Mark;
 
 class UnorderedHeapFile implements Store, Iterable<Record> {
 
-	private static final ThreadLocal<ByteBuffer> T_LOCAL_BUFFER = ThreadLocal.withInitial(() -> ByteBuffer.allocate(4 * 1024));
-	
-	private final PageCache pagecache;
-	private final int maxNrPages;
-	private final int pageSize;
- 
-	private final byte[] zeroPage;
-	private ByteBuffer lastPage;
-	private int lastPageNumber=-1;
+  private final PageCache pageCache;
+  private final int maxNrPages;
+  private final int pageSize;
 
-	private final FileChannel file;
+  private ByteBuffer lastPage;
+  private int lastPageNumber = -1;
 
-	private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-	
-	UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
-		this.file = FileChannel.open(path,
-		        Set.of(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
-		this.pagecache = new PageCache(maxNrPages,pageSize);
-		this.maxNrPages = maxNrPages;
-		this.pageSize = pageSize;
-		this.zeroPage = new byte[pageSize];
-	}
+  private final FileChannel file;
 
-	@Override
-	public void put(Entry entry) throws IOException, ClassNotFoundException {
-		
-		assertTooManyPages();
-		
-		var newRecord = Record.of(entry);
-		assertRecordSize(newRecord);
+  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
-		var iterator = cursor();
-		
-		lock.writeLock().lock();
-		try {
-			var found = false;
-			
-			lock.readLock().lock();
-			try {
-				while (iterator.hasNext()) {
-					var record = iterator.next();
-					if (Arrays.equals(newRecord.key(), record.key())) {
-						found = true;
-						break;
-					}
-				} 
-			} finally {
-				lock.readLock().unlock();
-			}
-			
-			if (found) {
-				iterator.remove();
-			}
-			
-			if ((lastPage != null && lastPage.remaining() < newRecord.size()) || lastPage == null) {
-				lastPage = ByteBuffer.allocate(pageSize);
-				lastPageNumber++;
-			}
-			
-			var src = newRecord.write(() -> lastPage);
-			writePage(src, lastPageNumber);
-		} finally {
-			lock.writeLock().unlock();
-		}
-	}
+  UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
+    this.file = FileChannel.open(path,
+        Set.of(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
+    this.pageCache = new PageCache(maxNrPages, this::readPage);
+    this.maxNrPages = maxNrPages;
+    this.pageSize = pageSize;
+    nextPage();
+  }
 
-	@Override
-	public synchronized Object get(Serializable key) throws IOException, ClassNotFoundException {
+  @Override
+  public void put(Entry entry) {
 
-		// serialize key
-		var keySer = serializeKey(key);
-		var iterator = cursor();
-		
-		lock.readLock().lock();
-		
-		try {
-			while (iterator.hasNext()) {
-				var record = iterator.next();
-				if (Arrays.equals(keySer, record.key())) {
-					return deserializeValue(record.value());
-				}
-			} 
-		} finally {
-			lock.readLock().unlock();
-		}
-		
-		return null;
-	}
+    assertTooManyPages();
 
-	public Object remove(Serializable key) throws IOException, ClassNotFoundException {
-		// serialize key
-		var keySer = serializeKey(key);
-		var iterator = cursor();
-		
-		boolean found = false;
-		byte[] value = null;
-		
-		lock.writeLock().lock();
-		try {
-			
-			Record record = null;
+    var newRecord = Record.of(entry);
 
-			// downgrade lock
-			lock.readLock().lock();
-			try {
-				while (iterator.hasNext()) {
-					record = iterator.next();
-					if (Arrays.equals(keySer, record.key())) {
-						found = true;
-						break;
-					}
-				} 
-			} finally {
-				lock.readLock().unlock();
-			}
-			
-			if (found) {
-				value = record.value();
-				iterator.remove();
-			} 
-			
-		} finally {
-			lock.writeLock().unlock();
-		}
-		
-		if(value!=null) {
-			return deserializeValue(value);
-		}
-		
-		return null;
-		
-	}
-	
-	private void writePage(ByteBuffer page, int pageNr) throws IOException {
-		int position = page.position();
-		page.rewind();
-		file.write(page, pageNr * pageSize);
-		page.position(position);
-		pagecache.remove(pageNr);
-	}
+    assertRecordSize(newRecord);
 
-	private int readPage(ByteBuffer page, int pageNr) {
-		
-		clearPage(page);
-		if(pagecache.get(page, pageNr)!=-1) {
-			return pageSize;
-		}
-		try {
-			var bytesRead = file.read(page, pageNr * pageSize);
-			if(bytesRead!=-1) {
-				pagecache.put(page,pageNr);
-			}
-			return bytesRead;
-		} catch (IOException e) {
-			throw new IOError(e);
-		}
-	}
-	
-	private void assertRecordSize(Record newRecord) {
-		if (newRecord.size() > pageSize) {
-			throw new IllegalArgumentException("entry to big");
-		}
-	}
+    var iterator = cursor();
 
-	private void assertTooManyPages() {
-		if(lastPageNumber>=maxNrPages) {
-			throw new TooManyPages();
-		}
-	}
+    lock.writeLock().lock();
+    try {
+      boolean found = false;
+      lock.readLock().lock();
+      try {
+        while (iterator.hasNext()) {
+          var record = iterator.next();
+          if (Arrays.equals(newRecord.key(), record.key())) {
+            found = true;
+            break;
+          }
+        }
+      } finally {
+        lock.readLock().unlock();
+      }
 
-	private static Object deserializeValue(byte[] value) throws IOException, ClassNotFoundException {
-		try (var inputStream = new ByteArrayInputStream(value)) {
+      if (found) {
+        iterator.remove();
+      }
 
-			try (var objectInput = new ObjectInputStream(inputStream)) {
-				return objectInput.readObject();
-			}
-		}
-	}
+      if (lastPage.remaining() < newRecord.size()) {
+        nextPage();
+      }
+      var src = newRecord.write(lastPage);
+      flushPage(src, lastPageNumber);
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
 
-	private static byte[] serializeKey(Serializable key) throws IOException {
-		try (var byteArray = new ByteArrayOutputStream()) {
-			try (var objectOutput = new ObjectOutputStream(byteArray)) {
-				objectOutput.writeObject(key);
-			}
-			return byteArray.toByteArray();
-		}
-	}
+  private void nextPage() {
+    lastPage = ByteBuffer.allocate(pageSize);
+    lastPageNumber++;
+    pageCache.put(lastPageNumber, lastPage);
+  }
 
-	private void clearPage(ByteBuffer page) {
-		page.clear();
-		page.put(zeroPage);
-		page.rewind();
-	}
+  @Override
+  public Object get(Serializable key) {
 
-	private ByteBuffer zeroPage() {
-		ByteBuffer page = T_LOCAL_BUFFER.get();
-		clearPage(page);
-		return page;
-	}
+    // serialize key
+    var keySer = serializeKey(key);
 
-	class Cursor implements Iterator<Record> {
+    var iterator = cursor();
+    lock.readLock().lock();
+    try {
+      while (iterator.hasNext()) {
+        var record = iterator.next();
+        if (Arrays.equals(keySer, record.key())) {
+          return deserializeValue(record.value());
+        }
+      }
+    } finally {
+      lock.readLock().unlock();
+    }
+    return null;
+  }
 
-		int pageNr = 0;
-		ByteBuffer page = null;
-		boolean hasNext = false;
-		private int inPagePosition = -1;
+  public Object remove(Serializable key) {
+    // serialize key
+    var keySer = serializeKey(key);
+    var iterator = cursor();
 
-		@Override
-		public boolean hasNext() {
-			if (!hasNext) {
-				inPagePosition = -1;
-				do{
-					if (page == null) {
-						page = zeroPage();
-						var bytesRead = readPage(page, pageNr);
-						if (bytesRead == -1) {
-							return hasNext = false;
-						}
-						page.rewind();
-					}
+    lock.writeLock().lock();
+    try {
+      boolean found = false;
+      Object value=null;
+      lock.readLock().lock();
+      try {
+        while (iterator.hasNext()) {
+          var record = iterator.next();
+          if (Arrays.equals(keySer, record.key())) {
+            value = deserializeValue(record.value());
+            found = true;
+            break;
+          }
+        }
+      } finally {
+        lock.readLock().unlock();
+      }
+      if (found) {
+        iterator.remove();
+      }
+      return value;
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
 
-					byte mark = 0;
-					do {
-						mark = page.get();
-						if (Mark.isPresent(mark)) {
-							return hasNext = true;
-						}
-						if (Mark.isRemoved(mark)) {
-							skip();
-						}
-					} while (!Mark.isEmpty(mark) || !page.hasRemaining());
+  private void flushPage(ByteBuffer page, int pageNr) {
+    int position = page.position();
+    page.rewind();
+    try {
+      file.write(page, pageNr * pageSize);
+    } catch (IOException e) {
+      throw new IOError(e);
+    }
+    page.position(position);
+  }
 
-					page = null;
-					pageNr++;
+  private ByteBuffer readPage(int pageNr) {
 
-				} while(true);
-			}
-			return hasNext;
-		}
+    if (pageNr > lastPageNumber) {
+      return null;
+    }
 
+    ByteBuffer page = ByteBuffer.allocate(pageSize);
+    try {
+      var bytesRead = file.read(page, pageNr * pageSize);
+      if (bytesRead != pageSize) {
+        throw new IllegalStateException(format("read page size is %d, file corrupted", bytesRead));
+      }
+      return page;
+    } catch (IOException e) {
+      throw new IOError(e);
+    }
 
-		@Override
-		public Record next() {
-			if (hasNext || hasNext()) {
-				hasNext = false;
-				inPagePosition = page.position()-1;
-				return record();
-			}
-			throw new NoSuchElementException();
-		}
-		
-		@Override
-		public void remove() {
-			if(inPagePosition<0) {
-				throw new IllegalStateException("next() method has not yet been called, or the remove() method has already been called");
-			}
-			page.put(inPagePosition, Mark.REMOVED.mark());
-			try {
-				writePage(page, pageNr);
-				//force page refresh
-				lastPage = null;
-				inPagePosition = -1;
-			} catch (IOException e) {
-				throw new IOError(e);
-			}
-		}
+  }
 
+  private void assertRecordSize(Record newRecord) {
+    if (newRecord.size() > pageSize) {
+      throw new IllegalArgumentException("entry to big");
+    }
+  }
 
-		Optional<ByteBuffer> page() {
-			return Optional.ofNullable(page);
-		}
+  private void assertTooManyPages() {
+    if (lastPageNumber >= maxNrPages) {
+      throw new TooManyPages();
+    }
+  }
 
-		private Record record() {
-			return Record.read(() -> page);
-		}
+  private static Object deserializeValue(byte[] value) {
+    try (var inputStream = new ByteArrayInputStream(value)) {
+      try (var objectInput = new ObjectInputStream(inputStream)) {
+        return objectInput.readObject();
+      }
+    } catch (IOException | ClassNotFoundException e) {
+      throw new IOError(e);
+    }
+  }
 
-		private void skip() {
-			Record.skip(() -> page);
-		}
+  private static byte[] serializeKey(Serializable key) {
+    try (var byteArray = new ByteArrayOutputStream()) {
+      try (var objectOutput = new ObjectOutputStream(byteArray)) {
+        objectOutput.writeObject(key);
+      }
+      return byteArray.toByteArray();
+    } catch (IOException e) {
+      throw new IOError(e);
+    }
+  }
 
-	}
+  class Cursor implements Iterator<Record> {
 
-	Cursor cursor() {
-		return new Cursor();
-	}
+    int pageNr;
+    ByteBuffer currentPage;
+    boolean hasNext;
+    private int inPagePosition = -1;
 
-	@Override
-	public Iterator<Record> iterator() {
-		return cursor();
-	}
+    @Override
+    public boolean hasNext() {
+      if (!hasNext) {
+        inPagePosition = -1;
+        do {
+          if (currentPage == null) {
+            var page = pageCache.get(pageNr);
+            if (page == null) {
+              return hasNext = false;
+            }
+            currentPage = page.duplicate().rewind();
+          }
+
+          byte mark = 0;
+          do {
+            mark = currentPage.get();
+            if (Mark.isPresent(mark)) {
+              return hasNext = true;
+            }
+            if (Mark.isRemoved(mark)) {
+              skip();
+            }
+          } while (!Mark.isEmpty(mark) || !currentPage.hasRemaining());
+
+          currentPage = null;
+          pageNr++;
+
+        } while (true);
+      }
+      return hasNext;
+    }
+
+    @Override
+    public Record next() {
+      if (hasNext || hasNext()) {
+        hasNext = false;
+        inPagePosition = currentPage.position() - 1;
+        return record();
+      }
+      throw new NoSuchElementException();
+    }
+
+    @Override
+    public void remove() {
+      if (inPagePosition < 0) {
+        throw new IllegalStateException(
+            "next() method has not yet been called, or the remove() method has already been called");
+      }
+      currentPage.put(inPagePosition, Mark.REMOVED.mark());
+      // force page flush
+      flushPage(currentPage, pageNr);
+      inPagePosition = -1;
+    }
+
+    Optional<ByteBuffer> page() {
+      return Optional.ofNullable(currentPage);
+    }
+
+    private Record record() {
+      return Record.read(() -> currentPage);
+    }
+
+    private void skip() {
+      Record.skip(() -> currentPage);
+    }
+
+  }
+
+  Cursor cursor() {
+    return new Cursor();
+  }
+
+  @Override
+  public Iterator<Record> iterator() {
+    return cursor();
+  }
 
 }

@@ -109,15 +109,11 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 		
 		Random random = new Random();
 		for (int i = 0; i < OPS_PER_WORKER; i++) {
-			try {
-				int nextInt = random.nextInt(20);
-				Integer value = (Integer) heapFile.get(nextInt);
-				if (value != null && !value.equals(Integer.valueOf(nextInt))) {
-					fail("incorrect value read from heap file");
-				}
-			} catch (ClassNotFoundException | IOException e) {
-				fail(e);
-			}
+			int nextInt = random.nextInt(20);
+      Integer value = (Integer) heapFile.get(nextInt);
+      if (value != null && !value.equals(Integer.valueOf(nextInt))) {
+      	fail("incorrect value read from heap file");
+      }
 		}
 	}
 
@@ -125,12 +121,8 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 		writersLatch.countDown();
 		Random random = new Random();
 		for (int i = 0; i < OPS_PER_WORKER; i++) {
-			try {
-				int nextInt = random.nextInt(20);
-				heapFile.put(new Entry(nextInt, nextInt));
-			} catch (ClassNotFoundException | IOException e) {
-				fail(e);
-			}
+			int nextInt = random.nextInt(20);
+      heapFile.put(new Entry(nextInt, nextInt));
 		}
 	}
 
