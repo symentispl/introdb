@@ -148,6 +148,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     page.rewind();
     try {
       file.write(page, pageNr * pageSize);
+      page.position(position);
     } catch (IOException e) {
       throw new IOError(e);
     }
@@ -183,8 +184,6 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
       throw new TooManyPages();
     }
   }
-
-  
 
   private static Object deserializeValue(byte[] value) {
     try (var inputStream = new ByteArrayInputStream(value)) {

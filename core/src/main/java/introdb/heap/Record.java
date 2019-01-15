@@ -1,5 +1,7 @@
 package introdb.heap;
 
+import static java.lang.String.format;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOError;
 import java.io.IOException;
@@ -91,7 +93,7 @@ class Record {
     return true;
   }
 
-  static Record of(Entry entry) {
+  public static Record of(Entry entry, Mark mark) {
     var keyByteArrayOutput = new ByteArrayOutputStream();
     try (var objectOutput = new ObjectOutputStream(keyByteArrayOutput)) {
       objectOutput.writeObject(entry.key());
@@ -106,7 +108,11 @@ class Record {
       throw new IOError(e);
     }
 
-    return new Record(keyByteArrayOutput.toByteArray(), valueByteArrayOutput.toByteArray());
+    return new Record(keyByteArrayOutput.toByteArray(), valueByteArrayOutput.toByteArray(), mark);
+  }
+
+  static Record of(Entry entry) {
+    return of(entry, Mark.PRESENT);
   }
 
   static Record read(ByteBuffer buffer) {
@@ -155,6 +161,19 @@ class Record {
 
     static boolean isRemoved(byte b) {
       return REMOVED.mark == b;
+    }
+
+    public static Mark valueOf(byte b) {
+      switch (b) {
+      case 0:
+        return Mark.EMPTY;
+      case 1:
+        return Mark.PRESENT;
+      case 2:
+        return Mark.REMOVED;
+      default:
+        throw new IllegalStateException(format("%d is not valid record mark", b));
+      }
     }
   }
 
