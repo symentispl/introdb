@@ -18,6 +18,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import introdb.heap.Record.Mark;
@@ -34,6 +35,8 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
   private final FileChannel file;
 
   private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+  private final ConcurrentHashMap<Object, Integer> keyIndex = new ConcurrentHashMap<>();
 
   UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
     this.file = FileChannel.open(path,
@@ -53,18 +56,23 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
     assertRecordSize(newRecord);
 
-    var iterator = cursor();
-
     lock.writeLock().lock();
     try {
+      PageCursor pageCursor = null;
       boolean found = false;
+      Integer pageNr = keyIndex.get(entry.key());
       lock.readLock().lock();
       try {
-        while (iterator.hasNext()) {
-          var record = iterator.next();
-          if (Arrays.equals(newRecord.key(), record.key())) {
-            found = true;
-            break;
+        // entry exists, find in page
+        // and update
+        if (pageNr != null) {
+          pageCursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
+          while (pageCursor.hasNext()) {
+            var record = pageCursor.next();
+            if (Arrays.equals(record.key(), newRecord.key())) {
+              found = true;
+              break;
+            }
           }
         }
       } finally {
@@ -72,14 +80,17 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
       }
 
       if (found) {
-        iterator.remove();
+        // TODO don't forget to flush it
+        pageCursor.remove();
       }
 
       if (lastPage.remaining() < newRecord.size()) {
         nextPage();
       }
+
       var src = newRecord.write(lastPage);
       flushPage(src, lastPageNumber);
+      keyIndex.put(entry.key(), lastPageNumber);
     } finally {
       lock.writeLock().unlock();
     }
@@ -94,16 +105,17 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
   @Override
   public Object get(Serializable key) {
 
-    // serialize key
-    var keySer = serializeKey(key);
-
-    var iterator = cursor();
     lock.readLock().lock();
     try {
-      while (iterator.hasNext()) {
-        var record = iterator.next();
-        if (Arrays.equals(keySer, record.key())) {
-          return deserializeValue(record.value());
+      Integer pageNr = keyIndex.get(key);
+      if (pageNr != null) {
+        var keySer = serializeKey(key);
+        var cursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
+        while (cursor.hasNext()) {
+          var record = cursor.next();
+          if (Arrays.equals(keySer, record.key())) {
+            return deserializeValue(record.value());
+          }
         }
       }
     } finally {
@@ -120,7 +132,7 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
     lock.writeLock().lock();
     try {
       boolean found = false;
-      Object value=null;
+      Object value = null;
       lock.readLock().lock();
       try {
         while (iterator.hasNext()) {

@@ -4,8 +4,8 @@ import static java.lang.Integer.valueOf;
 
 import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 class PageCache {
@@ -15,7 +15,7 @@ class PageCache {
 
   PageCache(int maxPageNr, Function<Integer, ByteBuffer> pageLoader) {
     this.pageLoader = pageLoader;
-    this.pages = new HashMap<>(maxPageNr);
+    this.pages = new ConcurrentHashMap<>(maxPageNr);
   }
 
   /**
