@@ -1,5 +1,7 @@
 package introdb.heap;
 
+import static java.lang.String.format;
+
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -10,7 +12,7 @@ class PageCursor implements Iterator<Record> {
 
   private static final int UNSET = -1;
 
-  private final ByteBuffer page;
+  private ByteBuffer page;
   private boolean hasNext = false;
   private int mark = UNSET;
 
@@ -26,12 +28,21 @@ class PageCursor implements Iterator<Record> {
     }
 
     while (page.hasRemaining()) {
-      var b = Mark.valueOf(page.get());
-      if (Record.Mark.PRESENT.equals(b)) {
+      Mark m = Mark.valueOf(page.get());
+      switch (m) {
+      case PRESENT:
         return hasNext = true;
-      }
-      if (Record.Mark.REMOVED.equals(b)) {
+      case REMOVED:
         Record.skip(() -> page);
+        break;
+      case EMPTY:
+        // when Mark.EMPTY we should,
+        // stop iterating at all
+        hasNext = false;
+        page.position(page.capacity());
+        break;
+      default:
+        throw new IllegalStateException(format("not all records marks were handled by page cursor,  (%s) ", m));
       }
     }
     return hasNext = false;
@@ -41,7 +52,7 @@ class PageCursor implements Iterator<Record> {
   public Record next() {
     if (hasNext || hasNext()) {
       hasNext = false;
-      mark = page.position();
+      mark = page.position()-1;
       return Record.read(page);
     }
     throw new NoSuchElementException();
@@ -53,7 +64,7 @@ class PageCursor implements Iterator<Record> {
       page.put(mark, Mark.REMOVED.mark());
       mark = UNSET;
     } else {
-      throw new IllegalStateException();
+      throw new IllegalStateException("next() was not called or remove() was called already");
     }
   }
 
@@ -63,6 +74,12 @@ class PageCursor implements Iterator<Record> {
 
   ByteBuffer page() {
     return page;
+  }
+
+  void reset(ByteBuffer page) {
+    this.page = page;
+    this.hasNext = false;
+    this.mark = UNSET;
   }
 
 }

@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.function.Supplier;
@@ -117,16 +118,14 @@ class Record {
 
   static Record read(ByteBuffer buffer) {
 
-    var keyLength = buffer.getInt();
-    var valueLength = buffer.getInt();
+      var keyLength = buffer.getInt();
+      var valueLength = buffer.getInt();
+      var key = new byte[keyLength];
+      buffer.get(key);
+      var value = new byte[valueLength];
+      buffer.get(value);
+      return new Record(key, value, Mark.PRESENT);
 
-    var key = new byte[keyLength];
-    buffer.get(key);
-
-    var value = new byte[valueLength];
-    buffer.get(value);
-
-    return new Record(key, value, Mark.PRESENT);
   }
 
   static void skip(Supplier<ByteBuffer> bufferSupplier) {

@@ -13,32 +13,33 @@ import org.openjdk.jmh.annotations.TearDown;
 
 @State(Scope.Benchmark)
 public class ReadUnorderedHeapFileBenchmark {
-	
-	private static final byte[] buffer = new byte[512];
-	
-	@Param({"10","100","500"})
-	public String key;
-	
-	private Store heapFile;
-	private Path tempFile;
-	
-	@Setup(Level.Trial)
-	public void setUp() throws Exception {
-		tempFile = Files.createTempFile("heap", "0001");
-		heapFile = new UnorderedHeapFile(tempFile, 50000, 4*1024);
-		for(int i=0;i<1000;i++) {
-			heapFile.put(new Entry(Integer.toString(i),buffer));			
-		}
-	}
-	
-	@TearDown(Level.Trial)
-	public void tearDown() throws Exception{
-		Files.delete(tempFile);
-	}
-	
-    @Benchmark
-    public Object readKey() throws Exception {
-    	return heapFile.get(key);
+
+  private static final byte[] buffer = new byte[512];
+
+  @Param({ "10", "100", "500" })
+  public String key;
+
+  private Store heapFile;
+  private Path tempFile;
+
+  @Setup(Level.Trial)
+  public void setUp() throws Exception {
+    tempFile = Files.createTempFile("heap", "0001");
+    heapFile = new UnorderedHeapFile(tempFile, 50000, 4 * 1024);
+    for (int i = 0; i < 1000; i++) {
+      heapFile.put(new Entry(Integer.toString(i), buffer));
     }
+  }
+
+  @TearDown(Level.Trial)
+  public void tearDown() throws Exception {
+    heapFile = null; // to avoid OutOfMemory, make sure you reference is clean up (it looks like something inside JMH holds this)
+    Files.delete(tempFile);
+  }
+
+  @Benchmark
+  public Object readEntry() throws Exception {
+    return heapFile.get(key);
+  }
 
 }

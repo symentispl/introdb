@@ -13,30 +13,31 @@ import org.openjdk.jmh.annotations.TearDown;
 
 @State(Scope.Benchmark)
 public class WriteUnorderedHeapFileBenchmark {
-		
-	@Param( {"512","1024","2048"})
-	public int bufferSize; 
-	private byte[] buffer;
-	private Store heapFile;
-	private int key;
-	private Path tempFile;
-	
-	@Setup(Level.Iteration)
-	public void setUp() throws Exception {
-		tempFile = Files.createTempFile("heap", "0001");
-		heapFile = new UnorderedHeapFile(tempFile, 50000, 4*1024);
-		buffer = new byte[bufferSize];
-		key = 0;
-	}
-	
-	@TearDown(Level.Iteration)
-	public void tearDown() throws Exception{
-		Files.delete(tempFile);
-	}
-	
-    @Benchmark
-    public void writeBuffer() throws Exception {
-    	heapFile.put(new Entry(key++,buffer));
-    }
+
+  @Param({ "512", "1024", "2048" })
+  public int bufferSize;
+  private byte[] buffer;
+  private Store heapFile;
+  private int key;
+  private Path tempFile;
+
+  @Setup(Level.Iteration)
+  public void setUp() throws Exception {
+    tempFile = Files.createTempFile("heap", "0001");
+    heapFile = new UnorderedHeapFile(tempFile, 50000, 4 * 1024);
+    buffer = new byte[bufferSize];
+    key = 0;
+  }
+
+  @TearDown(Level.Iteration)
+  public void tearDown() throws Exception {
+    heapFile = null; // to avoid OutOfMemory, make sure you reference is clean up (it looks like something inside JMH holds this)
+    Files.delete(tempFile);
+  }
+
+  @Benchmark
+  public void writeEntry() throws Exception {
+    heapFile.put(new Entry(key++, buffer));
+  }
 
 }
