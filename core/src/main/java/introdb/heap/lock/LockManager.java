@@ -2,7 +2,6 @@ package introdb.heap.lock;
 
 import static java.lang.String.format;
 
-import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.CompletableFuture;
@@ -90,7 +89,7 @@ public class LockManager {
 		public void clear() {
 			super.clear();
 			boolean removed = locks.remove(pageNr, this);
-			LOGGER.info(() -> format("lock for page %d was %s removed", pageNr, removed ? "" : "not"));
+			LOGGER.finest(() -> format("lock for page %d was %s removed", pageNr, removed ? "" : "not"));
 			try {
 				if (futureLock.isDone() && (!futureLock.isCancelled() && !futureLock.isCompletedExceptionally()))
 					objectPool.returnObject(futureLock.get());
@@ -118,10 +117,10 @@ public class LockManager {
 		startReferenceQueue();
 	}
 
-	public LockSupport lockForPage(Integer pageNr) throws InterruptedException, ExecutionException {
+	public LockSupport lockForPage(Integer pageNr) {
 		var futureLock = locks.compute(pageNr, (_pageNr, _lockRef) -> {
 		    // handling situation when there is no mapping, 
-			// or mapping points to unreachable lock
+			  // or mapping points to unreachable lock
 		    // instance, which was not yet processed by invalidator
 		    if (_lockRef == null || _lockRef.get() == null) {
 				CompletableFuture<ReentrantReadWriteLock> future = objectPool.borrowObject();
@@ -141,17 +140,19 @@ public class LockManager {
 
 	private void startReferenceQueue() {
 		invalidator.execute(() -> {
+      LOGGER.info("lock manager started");
 			while (running) {
 				try {
 					var reference = referenceQ.remove(1000);
 					if (reference != null) {
-						LOGGER.info(() -> format("processing reference %s", reference));
+						LOGGER.finest(() -> format("processing reference %s", reference));
 						reference.clear();
 					}
 				} catch (InterruptedException e) {
 					LOGGER.log(Level.SEVERE, "in reference queue processing", e);
 				}
 			}
+			LOGGER.info("lock manager shutdown");
 		});
 	}
 

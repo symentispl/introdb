@@ -2,8 +2,6 @@ package introdb.heap;
 
 import static java.lang.String.format;
 
-import introdb.heap.Record.Mark;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOError;
@@ -21,7 +19,10 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.ExecutionException;
+
+import introdb.heap.Record.Mark;
+import introdb.heap.lock.LockManager;
 
 class UnorderedHeapFile implements Store, Iterable<Record> {
 
@@ -34,14 +35,14 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
   private final FileChannel file;
 
-  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-
   private final ConcurrentHashMap<Object, Integer> keyIndex = new ConcurrentHashMap<>();
+  private final LockManager lockManager;
 
   UnorderedHeapFile(Path path, int maxNrPages, int pageSize) throws IOException {
     this.file = FileChannel.open(path,
         Set.of(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
     this.pageCache = new PageCache(maxNrPages, this::readPage);
+    this.lockManager = new LockManager();
     this.maxNrPages = maxNrPages;
     this.pageSize = pageSize;
     nextPage();
@@ -56,32 +57,24 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
 
     assertRecordSize(newRecord);
 
-    lock.writeLock().lock();
-    try {
-      PageCursor pageCursor = null;
-      boolean found = false;
+    lockManager.lockForPage(lastPageNumber).inWriteOperation(() -> {
+
       Integer pageNr = keyIndex.get(entry.key());
-      lock.readLock().lock();
-      try {
-        // entry exists, find in page
-        // and update
-        if (pageNr != null) {
-          pageCursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
+      if (pageNr != null) {
+        lockManager.lockForPage(pageNr).inReadOperation(() -> {
+          var pageCursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
           while (pageCursor.hasNext()) {
             var record = pageCursor.next();
             if (Arrays.equals(record.key(), newRecord.key())) {
-              found = true;
-              break;
+              return pageCursor;
             }
           }
-        }
-      } finally {
-        lock.readLock().unlock();
-      }
-
-      if (found) {
-        // TODO don't forget to flush it
-        pageCursor.remove();
+          return null;
+        }).thenAccept(pageCursor -> {
+          if (pageCursor != null) {
+            pageCursor.remove();
+          }
+        });
       }
 
       if (lastPage.remaining() < newRecord.size()) {
@@ -91,9 +84,10 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
       var src = newRecord.write(lastPage);
       flushPage(src, lastPageNumber);
       keyIndex.put(entry.key(), lastPageNumber);
-    } finally {
-      lock.writeLock().unlock();
-    }
+
+      return null;
+    });
+
   }
 
   private void nextPage() {
@@ -105,54 +99,59 @@ class UnorderedHeapFile implements Store, Iterable<Record> {
   @Override
   public Object get(Serializable key) {
 
-    lock.readLock().lock();
-    try {
-      Integer pageNr = keyIndex.get(key);
-      if (pageNr != null) {
-        var keySer = serializeKey(key);
-        var cursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
-        while (cursor.hasNext()) {
-          var record = cursor.next();
-          if (Arrays.equals(keySer, record.key())) {
-            return deserializeValue(record.value());
+    Integer pageNr = keyIndex.get(key);
+    if (pageNr != null) {
+      try {
+        return lockManager.lockForPage(pageNr).inReadOperation(() -> {
+          var keySer = serializeKey(key);
+          var cursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
+          while (cursor.hasNext()) {
+            var record = cursor.next();
+            if (Arrays.equals(keySer, record.key())) {
+              return deserializeValue(record.value());
+            }
           }
-        }
+          return null;
+        }).get();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-    } finally {
-      lock.readLock().unlock();
     }
     return null;
   }
 
   public Object remove(Serializable key) {
-    // serialize key
-    var keySer = serializeKey(key);
-    var iterator = cursor();
-
-    lock.writeLock().lock();
-    try {
-      boolean found = false;
-      Object value = null;
-      lock.readLock().lock();
-      try {
-        while (iterator.hasNext()) {
-          var record = iterator.next();
-          if (Arrays.equals(keySer, record.key())) {
-            value = deserializeValue(record.value());
-            found = true;
-            break;
-          }
+    Integer pageNr = keyIndex.get(key);
+    if (pageNr != null) {
+      return lockManager.lockForPage(pageNr).inWriteOperation(() -> {
+        try {
+          return lockManager.lockForPage(pageNr).inReadOperation(() -> {
+            var keySer = serializeKey(key);
+            var pageCursor = new PageCursor(pageCache.get(pageNr).duplicate().rewind());
+            while (pageCursor.hasNext()) {
+              var record = pageCursor.next();
+              if (Arrays.equals(keySer, record.key())) {
+                return pageCursor;
+              }
+            }
+            return null;
+          }).thenApply(pageCursor -> {
+            if (pageCursor != null) {
+              pageCursor.remove();
+              return deserializeValue(pageCursor.record().value());
+            }
+            return null;
+          }).get();
+        } catch (InterruptedException | ExecutionException e) {
+          throw new RuntimeException(e);
         }
-      } finally {
-        lock.readLock().unlock();
-      }
-      if (found) {
-        iterator.remove();
-      }
-      return value;
-    } finally {
-      lock.writeLock().unlock();
+      });
     }
+    return null;
+  }
+
+  void close() throws Exception {
+    lockManager.shutdown();
   }
 
   private void flushPage(ByteBuffer page, int pageNr) {

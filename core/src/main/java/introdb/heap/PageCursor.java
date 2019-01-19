@@ -15,6 +15,7 @@ class PageCursor implements Iterator<Record> {
   private ByteBuffer page;
   private boolean hasNext = false;
   private int mark = UNSET;
+  private Record record;
 
   PageCursor(ByteBuffer page) {
     this.page = page;
@@ -26,6 +27,8 @@ class PageCursor implements Iterator<Record> {
     if (hasNext) {
       return true;
     }
+    
+    record =null;
 
     while (page.hasRemaining()) {
       Mark m = Mark.valueOf(page.get());
@@ -53,7 +56,7 @@ class PageCursor implements Iterator<Record> {
     if (hasNext || hasNext()) {
       hasNext = false;
       mark = page.position()-1;
-      return Record.read(page);
+      return record=Record.read(page);
     }
     throw new NoSuchElementException();
   }
@@ -66,6 +69,13 @@ class PageCursor implements Iterator<Record> {
     } else {
       throw new IllegalStateException("next() was not called or remove() was called already");
     }
+  }
+  
+  Record record() {
+    if(record==null) {
+      throw new IllegalStateException("next() was not called or hasNext() was called already");
+    }
+    return record;
   }
 
   private boolean unset() {

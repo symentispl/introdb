@@ -37,7 +37,7 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 	private int nrOfReaders = 5;
 
 	private Path heapFilePath;
-	private Store heapFile;
+	private UnorderedHeapFile heapFile;
 	private CountDownLatch writersLatch;
 	private ExecutorService executors;
 
@@ -45,17 +45,15 @@ public class ConcurrentReadWriteUnorderedHeapFileTest {
 	void setUp() throws IOException {
 		heapFilePath = Files.createTempFile("heap", "0001");
 		heapFile = new UnorderedHeapFile(heapFilePath, MAX_NR_PAGES, PAGE_SIZE);
-
 		executors = Executors.newCachedThreadPool();
 	}
 
 	@AfterEach
-	void tearDown() throws IOException, InterruptedException {
+	void tearDown() throws Exception{
+	  executors.shutdown();
+	  executors.awaitTermination(1, TimeUnit.MINUTES);
+	  heapFile.close();
 		Files.delete(heapFilePath);
-		
-		executors.shutdown();
-		executors.awaitTermination(1, TimeUnit.MINUTES);
-		
 	}
 
 	@Test

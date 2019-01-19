@@ -56,7 +56,8 @@ public class ConcurrentReadWriteUnorderedHeapFileBenchmark {
   }
 
   @TearDown(Level.Iteration)
-  public void tearDown() throws IOException {
+  public void tearDown() throws Exception {
+    heapFile.close();
     heapFile = null; // to avoid OutOfMemory, make sure you reference is clean up (it looks like something inside JMH holds this)
     Files.delete(tempFile);
   }
